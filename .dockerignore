@@ -1,3 +1,10 @@
 node_modules
+.github
+.git
+test
 Dockerfile*
 docker-compose*.yml
+.gitignore
+.travis.yml
+LICENSE*
+README.md

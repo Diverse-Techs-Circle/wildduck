@@ -1,0 +1,172 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - dtechs
+    paths:
+      - "**/*.js"
+      - "workflows/docker.yml"
+      - "**/Dockerfile"
+  workflow_dispatch:
+
+env:
+  OWNER: diverse-techs-circle
+
+jobs:
+  Build-wildduck:
+    name: Build wildduck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-wildduck-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-buildx-wildduck-
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.PAT }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/wildduck:latest
+            ghcr.io/${{ env.OWNER }}/wildduck:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+  Build-haraka:
+    name: Build haraka
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-haraka-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-buildx-haraka-
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.PAT }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: ./haraka
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/haraka:latest
+            ghcr.io/${{ env.OWNER }}/haraka:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+  Build-zone-mta:
+    name: Build zone-mta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.0
+        with:
+          access_token: ${{ github.token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-zonemta-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-buildx-zonemta-
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.PAT }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: ./zone-mta
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/zone-mta:latest
+            ghcr.io/${{ env.OWNER }}/zone-mta:${{ github.sha }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
+
+  Deploy:
+    name: Deploy
+    needs:
+      - Build-wildduck
+      - Build-haraka
+      - Build-zone-mta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollout
+        uses: appleboy/ssh-action@master
+        env:
+          WILDDUCK_IMAGE: ghcr.io/${{ env.OWNER }}/wildduck:${{ github.sha }}
+          HARAKA_IMAGE: ghcr.io/${{ env.OWNER }}/haraka:${{ github.sha }}
+          ZONE_MTA_IMAGE: ghcr.io/${{ env.OWNER }}/zone-mta:${{ github.sha }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SECRET_KEY }}
+          envs: WILDDUCK_IMAGE,HARAKA_IMAGE,ZONE_MTA_IMAGE
+          script_stop: false
+          script: |
+            kubectl set image deployment/wildduck wildduck=$WILDDUCK_IMAGE
+            kubectl set image deployment/haraka haraka=$HARAKA_IMAGE
+            kubectl set image deployment/zonemta zonemta=$ZONE_MTA_IMAGE

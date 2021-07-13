@@ -1,0 +1,7 @@
+version: "1"
+rules:
+  - base: dtechs
+    upstream: nodemailer/wildduck:master
+    mergeMethod: hardreset
+    conflictReviewers:
+      - eve0415
